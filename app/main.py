@@ -12,12 +12,18 @@ MQTT_HOST = os.getenv('MQTT_HOST', None)
 MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
 MQTT_USERNAME = os.getenv('MQTT_USERNAME', None)
 MQTT_PASSWORD = os.getenv('MQTT_PASSWORD', None)
+CAR_ID = os.getenv('CAR_ID', 1)
+NAMESPACE = os.getenv('NAMESPACE', None)
 
 if MQTT_HOST is None:
     print("No MQTT broker specified. Please set the MQTT_HOST environment variable")
     sys.exit(1)
 
-mqttnamespace = "mqtt/evcc/tesla/borne"
+# set the namespace of the topic to subscribe to
+if NAMESPACE is None:
+    mqttnamespace = "twc3mqtt"
+else:
+    mqttnamespace = f"teslamate/{TESLAMATE_NAMESPACE}"
 
 class Vitals(BaseModel):
     contactor_closed: bool
@@ -49,23 +55,28 @@ class Vitals(BaseModel):
 
 state = ""
 
+# Data dictionary for MQTT message values
 data = {
   "plugged_in": False,
   "soc": 0,
   "is_charging": 0,
   "is_dcfc": 0,
-  "is_parked": 1,
+  "is_parked": 0,
   "voltage": 0,
   "current": 0,
   "kwh_charged": 0,
-  "inside_temp": 20,
+  "inside_temp": 0,
   "phases": 1,
-  "session_start": datetime.utcnow().isoformat()
+  "session_start": "2024-01-01T00:00:00.000000Z"
 }
 
+# Initialize MQTT client and connect
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "twc3evcc")
 if MQTT_USERNAME is not None:
-    client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+    if MQTT_PASSWORD is not None:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+    else:
+        client.username_pw_set(MQTT_USERNAME)
 
 client.connect(MQTT_HOST, MQTT_PORT)
 
@@ -74,8 +85,9 @@ def on_connect(client, userdata, flags, reason_code, properties):
         print("Unable to connect to MQTT broker")
         sys.exit(1)
     print("Connected to MQTT broker")
-    client.subscribe(f"{mqttnamespace}/#")
+    client.subscribe(f"{mqttnamespace}/{CAR_ID}/#")
 
+# Process MQTT messages
 def on_message(client, userdata, message):
     global data
     topic = message.topic
